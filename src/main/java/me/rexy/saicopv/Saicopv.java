@@ -47,6 +47,8 @@ public class Saicopv
     private long lastPvCommandAt;
     private long lastAutoSellAt;
     private boolean waitingForPvToOpen;
+    private int pvTicksOpen;
+    private int pvItemsMovedThisSession;
     private boolean autoSellEnabled;
     private int totalCaught;
     private final Map<String, Integer> caughtByName = new LinkedHashMap<String, Integer>();
@@ -96,9 +98,12 @@ public class Saicopv
         lastInventoryCheckAt = now;
 
         if (currentTrackedCount > previousChestCount && canSendPvCommand(now)) {
+            sendClientMessage(EnumChatFormatting.YELLOW + "SaicoFish detected tracked loot. Opening /pv...");
             MC.thePlayer.sendChatMessage("/pv");
             lastPvCommandAt = now;
             waitingForPvToOpen = true;
+            pvTicksOpen = 0;
+            pvItemsMovedThisSession = 0;
         }
 
         previousChestCount = currentTrackedCount;
@@ -141,50 +146,67 @@ public class Saicopv
             return;
         }
 
+        pvTicksOpen++;
         ContainerChest chestContainer = (ContainerChest) openContainer;
-        int movedItems = moveTrackedItemsToPv(chestContainer, player);
-
-        if (movedItems <= 0) {
-            waitingForPvToOpen = false;
+        if (pvTicksOpen < 2) {
             return;
         }
 
-        player.closeScreen();
-        waitingForPvToOpen = false;
+        ItemStack stackToMove = findTrackedStack(chestContainer);
+        if (stackToMove == null) {
+            sendClientMessage(EnumChatFormatting.GREEN + "SaicoFish moved " + pvItemsMovedThisSession + " tracked item(s) to PV.");
+            player.closeScreen();
+            waitingForPvToOpen = false;
+            pvTicksOpen = 0;
+            pvItemsMovedThisSession = 0;
+            previousChestCount = countTrackedItems(player.inventory);
+            return;
+        }
+
+        int trackedSlot = findTrackedSlot(chestContainer);
+        if (trackedSlot < 0) {
+            return;
+        }
+
+        MC.playerController.windowClick(chestContainer.windowId, trackedSlot, 0, 1, player);
+        trackCaughtChest(stackToMove);
+        pvItemsMovedThisSession += stackToMove.stackSize;
+        sendClientMessage(EnumChatFormatting.AQUA + "Moved to PV: " + EnumChatFormatting.WHITE + stackToMove.getDisplayName() + EnumChatFormatting.GRAY + " x" + stackToMove.stackSize);
         previousChestCount = countTrackedItems(player.inventory);
-    }
-
-    private int moveTrackedItemsToPv(ContainerChest chestContainer, EntityPlayer player)
-    {
-        int movedItems = 0;
-        boolean movedStack;
-
-        do {
-            movedStack = false;
-
-            for (Slot slot : chestContainer.inventorySlots) {
-                if (slot.inventory instanceof InventoryPlayer && slot.getHasStack()) {
-                    ItemStack stack = slot.getStack();
-                    if (stack != null && isTrackedItem(stack)) {
-                        ItemStack movedStackCopy = stack.copy();
-                        MC.playerController.windowClick(chestContainer.windowId, slot.slotNumber, 0, 1, player);
-                        trackCaughtChest(movedStackCopy);
-                        movedItems += movedStackCopy.stackSize;
-                        movedStack = true;
-                        break;
-                    }
-                }
-            }
-
-        } while (movedStack);
-
-        return movedItems;
     }
 
     private boolean isTrackedItem(ItemStack stack)
     {
         Item item = stack.getItem();
         return item == CHEST_ITEM || item == GOLD_INGOT_ITEM || item == PAPER_ITEM || item == BLAZE_POWDER_ITEM || item == QUARTZ_ITEM;
+    }
+
+    private int findTrackedSlot(ContainerChest chestContainer)
+    {
+        for (Slot slot : chestContainer.inventorySlots) {
+            if (slot.inventory instanceof InventoryPlayer && slot.getHasStack()) {
+                ItemStack stack = slot.getStack();
+                if (stack != null && isTrackedItem(stack)) {
+                    return slot.slotNumber;
+                }
+            }
+        }
+
+        return -1;
+    }
+
+    private ItemStack findTrackedStack(ContainerChest chestContainer)
+    {
+        for (Slot slot : chestContainer.inventorySlots) {
+            if (slot.inventory instanceof InventoryPlayer && slot.getHasStack()) {
+                ItemStack stack = slot.getStack();
+                if (stack != null && isTrackedItem(stack)) {
+                    return stack.copy();
+                }
+            }
+        }
+
+        return null;
     }
 
     private void trackCaughtChest(ItemStack stack)
@@ -236,6 +258,13 @@ public class Saicopv
 
         for (Map.Entry<String, Integer> entry : caughtByName.entrySet()) {
             MC.thePlayer.addChatMessage(new ChatComponentText(EnumChatFormatting.AQUA + entry.getKey() + EnumChatFormatting.WHITE + ": " + EnumChatFormatting.GREEN + entry.getValue()));
+        }
+    }
+
+    private void sendClientMessage(String message)
+    {
+        if (MC.thePlayer != null) {
+            MC.thePlayer.addChatMessage(new ChatComponentText(message));
         }
     }
 
