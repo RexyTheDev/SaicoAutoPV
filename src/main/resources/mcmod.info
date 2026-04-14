@@ -1,0 +1,16 @@
+[
+{
+  "modid": "SaicoPV",
+  "name": "SaicoPV",
+  "description": "Auto /pv tressures",
+  "version": "${version}",
+  "mcversion": "${mcversion}",
+  "url": "",
+  "updateUrl": "",
+  "authorList": ["MommyRexy"],
+  "credits": "Rexy",
+  "logoFile": "",
+  "screenshots": [],
+  "dependencies": []
+}
+]
